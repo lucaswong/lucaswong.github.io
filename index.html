@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2024 Production Review Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.8em;
+            text-align: center;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        .filter-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        select, button {
+            padding: 10px;
+            font-size: 1em;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        select {
+            flex: 1;
+            min-width: 200px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .overview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .card {
+            background: linear-gradient(135deg, #ffffff, #f9f9f9);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            flex: 1 1 calc(25% - 15px);
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card h3 {
+            margin: 0;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .card p {
+            margin: 8px 0 0;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .details {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+        .details p {
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+        .chart-container {
+            position: relative;
+            height: 350px;
+            margin-bottom: 25px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            margin: 20px 0;
+        }
+        @media (max-width: 768px) {
+            .card {
+                flex: 1 1 calc(50% - 15px);
+            }
+            h1 {
+                font-size: 1.4em;
+            }
+            select, button {
+                font-size: 0.9em;
+            }
+        }
+        @media (max-width: 480px) {
+            .card {
+                flex: 1 1 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>2024 Production Review (As of 23 Dec 2024)</h1>
+        
+        <!-- 篩選器 -->
+        <div class="filter-section">
+            <select id="employeeSelect" onchange="updateDashboard()">
+                <!-- 動態填充 -->
+            </select>
+            <select id="chartType" onchange="updateChart()">
+                <option value="ytd">YTD Total AC</option>
+                <option value="mtd">MTD Total AC</option>
+            </select>
+        </div>
+
+        <!-- 概覽區 -->
+        <div class="overview" id="overview">
+            <div class="card"><h3>YTD Total AC</h3><p id="ytdTotalAC">0</p></div>
+            <div class="card"><h3>YTD Life Case</h3><p id="ytdLifeCase">0</p></div>
+            <div class="card"><h3>YTD Fund Case</h3><p id="ytdFundCase">0</p></div>
+            <div class="card"><h3>Production Club</h3><p id="club">N/A</p></div>
+        </div>
+
+        <!-- 詳細數據區 -->
+        <div class="details" id="details"></div>
+
+        <!-- 圖表區 -->
+        <div class="chart-container">
+            <canvas id="productionChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="clubChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let data = [];
+        let productionChart, clubChart;
+
+        // 加載數據並初始化
+        async function loadData() {
+            try {
+                const response = await fetch('data.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const rawData = await response.json();
+
+                // 過濾掉無效數據（例如標題行）
+                data = rawData.filter(d => d.name !== "Name" && d.name !== "" && d.ytd.totalAC !== "");
+
+                if (data.length === 0) {
+                    throw new Error("No valid data found after filtering.");
+                }
+
+                // 動態填充篩選器
+                const select = document.getElementById('employeeSelect');
+                select.innerHTML = '<option value="all">All Employees</option>' + 
+                    data.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+
+                // 初始化柱狀圖
+                const ctx = document.getElementById('productionChart').getContext('2d');
+                productionChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.name),
+                        datasets: [{
+                            label: 'YTD Total AC',
+                            data: data.map(d => d.ytd.totalAC),
+                            backgroundColor: 'rgba(52, 152, 219, 0.6)',
+                            borderColor: 'rgba(52, 152, 219, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Total AC' } },
+                            x: { title: { display: true, text: 'Employee' } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+
+                // 初始化圓餅圖（Production Club分佈）
+                const clubCtx = document.getElementById('clubChart').getContext('2d');
+                const clubCounts = {};
+                data.forEach(d => {
+                    clubCounts[d.club] = (clubCounts[d.club] || 0) + 1;
+                });
+                clubChart = new Chart(clubCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: Object.keys(clubCounts),
+                        datasets: [{
+                            data: Object.values(clubCounts),
+                            backgroundColor: [
+                                '#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6',
+                                '#1abc9c', '#e67e22', '#34495e'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            title: { display: true, text: 'Production Club Distribution' }
+                        }
+                    }
+                });
+
+                // 初次更新Dashboard
+                updateDashboard();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('details').innerHTML = `<p class="error">Error loading data: ${error.message}. Please check the data file and ensure it is accessible.</p>`;
+            }
+        }
+
+        // 更新Dashboard
+        function updateDashboard() {
+            const select = document.getElementById('employeeSelect');
+            const selectedName = select.value;
+            let filteredData = data;
+
+            if (selectedName !== 'all') {
+                filteredData = data.filter(d => d.name === selectedName);
+            }
+
+            // 更新概覽
+            const ytdTotalAC = filteredData.reduce((sum, d) => sum + (d.ytd.totalAC || 0), 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+            const ytdLifeCase = filteredData.reduce((sum, d) => sum + (d.ytd.lifeCase || 0), 0);
+            const ytdFundCase = filteredData.reduce((sum, d) => sum + (d.ytd.fundCase || 0), 0);
+            const club = selectedName === 'all' ? 'N/A' : filteredData[0].club;
+
+            document.getElementById('ytdTotalAC').textContent = ytdTotalAC;
+            document.getElementById('ytdLifeCase').textContent = ytdLifeCase;
+            document.getElementById('ytdFundCase').textContent = ytdFundCase;
+            document.getElementById('club').textContent = club;
+
+            // 更新詳細數據
+            const detailsDiv = document.getElementById('details');
+            detailsDiv.innerHTML = filteredData.map(d => `
+                <p><strong>${d.name}</strong></p>
+                <p>YTD: Total AC: ${d.ytd.totalAC.toLocaleString('en-US', { maximumFractionDigits: 2 })}, 
+                Life Case: ${d.ytd.lifeCase}, Fund Case: ${d.ytd.fundCase}, Total Case: ${d.ytd.totalCase}</p>
+                <p>MTD: Total AC: ${d.mtd.totalAC.toLocaleString('en-US', { maximumFractionDigits: 2 })}, 
+                Life Case: ${d.mtd.lifeCase}, Fund Case: ${d.mtd.fundCase}, Total Case: ${d.mtd.totalCase}</p>
+                <p>Club: ${d.club}</p>
+            `).join('');
+
+            // 更新圖表
+            updateChart();
+        }
+
+        // 更新圖表（根據MTD/YTD選擇）
+        function updateChart() {
+            const chartType = document.getElementById('chartType').value;
+            const select = document.getElementById('employeeSelect');
+            const selectedName = select.value;
+            let filteredData = data;
+
+            if (selectedName !== 'all') {
+                filteredData = data.filter(d => d.name === selectedName);
+            }
+
+            productionChart.data.labels = filteredData.map(d => d.name);
+            productionChart.data.datasets[0].data = chartType === 'ytd' 
+                ? filteredData.map(d => d.ytd.totalAC) 
+                : filteredData.map(d => d.mtd.totalAC);
+            productionChart.data.datasets[0].label = chartType === 'ytd' ? 'YTD Total AC' : 'MTD Total AC';
+            productionChart.update();
+
+            // 更新圓餅圖
+            const clubCounts = {};
+            filteredData.forEach(d => {
+                clubCounts[d.club] = (clubCounts[d.club] || 0) + 1;
+            });
+            clubChart.data.labels = Object.keys(clubCounts);
+            clubChart.data.datasets[0].data = Object.values(clubCounts);
+            clubChart.update();
+        }
+
+        // 頁面加載時執行
+        loadData();
+    </script>
+</body>
+</html>
